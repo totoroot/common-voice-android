@@ -1,28 +1,31 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Base application theme. -->
     <!-- To view "full screen", replace 'DarkActionBar'->'NoActionBar' both in AppTheme and AppTheme.FullScreen
          It doesn't work -> "App doesn't respond" -> TEMPORARILY SOLUTION: actionBarSize = 1dp  -->
 
-    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
-        <item name="android:colorPrimary">@color/colorPrimary</item>
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/colorPrimaryDark</item>
+        <item name="colorPrimary">@color/colorPrimaryDark</item><!-- Action bar color -->
         <item name="android:colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="android:colorAccent">@color/colorAccent</item>
+        <item name="android:colorAccent">@color/colorPrimaryDark</item>
         <item name="android:colorBackground">@color/colorBackground</item>
-        <item name="android:statusBarColor">@color/colorPrimary</item>
-        <item name="android:actionBarSize">1dp</item>
+        <item name="android:statusBarColor" tools:targetApi="l">@color/colorPrimaryDark</item>
+        <item name="colorSurface">@color/design_default_color_surface</item>
+        <!--<item name="android:actionBarSize">1dp</item> -->
         <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
+        <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme</item>
     </style>
 
     <style name="AppTheme.TitleBar" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
         <item name="android:colorPrimary">@color/colorBlack</item>
+        <item name="colorPrimary">@color/colorBlack</item><!-- Action bar color -->
         <item name="android:colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="android:colorAccent">@color/colorBlack</item>
         <item name="android:colorBackground">@color/colorBackground</item>
         <item name="android:statusBarColor">@color/colorPrimaryDark</item>
         <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
+        <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme</item>
     </style>
 
     <style name="AppTheme.FullScreen" parent="Theme.AppCompat.Light.NoActionBar">
@@ -30,7 +33,28 @@
         <item name="android:colorPrimary">@color/colorPrimary</item>
         <item name="android:colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="android:colorAccent">@color/colorAccent</item>
+        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
         <item name="android:colorBackground">@color/colorBackground</item>
-        <item name="android:navigationBarColor">@color/colorBackground</item>
+        <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
+        <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme</item>
+    </style>
+
+    <!-- Message dialog -->
+    <style name="MessageDialogTheme">
+        <item name="android:padding">0dp</item>
+        <item name="android:background">@drawable/top_bottom_border_radius</item>
+        <item name="android:backgroundTint">@color/colorTransparent</item>
+        <item name="android:scaleType">fitXY</item>
+    </style>
+
+    <!-- Bottomsheet - Report -->
+    <style name="AppBottomSheetDialogTheme"
+        parent="Theme.Design.Light.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/AppModalStyle</item>
+    </style>
+
+    <style name="AppModalStyle"
+        parent="Widget.Design.BottomSheet.Modal">
+        <item name="android:background">@drawable/top_border_radius</item>
     </style>
 </resources>

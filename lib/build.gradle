@@ -1,0 +1,96 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-kapt'
+apply plugin: 'kotlin-parcelize'
+
+android {
+    compileSdkVersion 30
+
+    defaultConfig {
+        minSdkVersion 23
+        targetSdkVersion 30
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments = ["room.incremental"   : "true",
+                             "room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility = 1.8
+        targetCompatibility = 1.8
+    }
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    lintOptions {
+        enable "VersionCheckerGradleLint"
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+    implementation Libs.kotlinStdLib
+    implementation Libs.coreKtx
+    implementation Libs.appcompat
+    testImplementation Libs.junit4
+    androidTestImplementation Libs.junitExt
+    androidTestImplementation Libs.espressoCore
+
+    //Moshi
+    implementation Libs.moshiCore
+    kapt Libs.moshiCodegen
+    //https://github.com/square/moshi/
+
+    //Retrofit
+    implementation Libs.retrofit
+    implementation Libs.moshiConverter
+    //https://square.github.io/retrofit/
+
+    //Coroutines
+    implementation Libs.couroutineAndroid
+    //https://github.com/Kotlin/kotlinx.coroutines
+
+    //MVVM
+    implementation Libs.viewModel
+    implementation Libs.liveData
+    implementation Libs.viewModelSavedState
+    implementation Libs.commonJava8
+    //https://developer.android.com/topic/libraries/architecture/viewmodel
+
+    //Room
+    implementation Libs.roomRuntime
+    kapt Libs.roomCompiler
+    implementation Libs.roomKtx
+    //https://developer.android.com/topic/libraries/architecture/room
+
+    //OkHttp
+    implementation Libs.okhttp
+    implementation Libs.loggingInterceptor
+    //https://square.github.io/okhttp/#releases
+
+    //WorkManager
+    implementation Libs.workRuntimeKtx
+    //https://developer.android.com/topic/libraries/architecture/workmanager/basics
+
+    //Koin
+    implementation Libs.koinViewModel
+
+    //App Startup
+    implementation Libs.startUp
+
+    // Debug
+    implementation Libs.timber
+}

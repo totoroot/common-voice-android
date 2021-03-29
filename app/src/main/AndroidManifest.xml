@@ -11,71 +11,79 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <application
+        android:name=".CommonVoice"
         android:allowBackup="true"
         android:configChanges="locale"
-        android:icon="@mipmap/ic_commonvoice"
+        android:icon="@mipmap/ic_cvproject_stable"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_commonvoice_round"
+        android:roundIcon="@mipmap/ic_cvproject_stable_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true"
         tools:ignore="AllowBackup,GoogleAppIndexingWarning">
-        <!-- First start (TutorialActivity) -->
+        <!--SplashScreen-->
         <activity
-            android:name=".TutorialActivity"
+            android:name=".SplashScreen"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:label="@string/app_name"
+            android:theme="@style/AppTheme.FullScreen">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- First start (FirstLaunch) -->
+        <activity
+            android:name=".FirstLaunch"
+            android:configChanges="orientation|screenSize"
             android:label="@string/app_name"
             android:theme="@style/AppTheme.FullScreen" />
         <!-- The actual app (MainActivity) -->
         <activity
             android:name=".MainActivity"
+            android:hardwareAccelerated="true"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <!--<category android:name="android.intent.category.LAUNCHER" />-->
             </intent-filter>
         </activity>
         <!-- SpeakActivity -->
         <activity
             android:name=".SpeakActivity"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize"
             android:label="@string/app_name"
             android:theme="@style/AppTheme" />
         <!-- ListenActivity -->
         <activity
             android:name=".ListenActivity"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize"
             android:label="@string/app_name"
             android:theme="@style/AppTheme" />
         <!-- LoginActivity -->
         <activity
             android:name=".LoginActivity"
-            android:label="@string/button_home_profile"
+            android:configChanges="orientation|screenSize"
+            android:label="@string/app_name"
             android:parentActivityName=".MainActivity"
             android:theme="@style/AppTheme.TitleBar">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.APP_BROWSER" />
-
-                <data
-                    android:host="auth.mozilla.auth0.com"
-                    android:scheme="https" />
-            </intent-filter>
+            <nav-graph android:value="@navigation/login_navigation" />
         </activity>
-        <!-- NoConnectionActivity -->
-        <activity
-            android:name=".NoConnectionActivity"
-            android:label="@string/app_name"
-            android:theme="@style/AppTheme" />
         <!-- FirstRunListen -->
         <activity
             android:name=".FirstRunListen"
+            android:configChanges="orientation|screenSize"
             android:label="@string/app_name"
             android:screenOrientation="portrait"
             android:theme="@style/AppTheme" />
         <!-- FirstRunSpeak -->
         <activity
             android:name=".FirstRunSpeak"
+            android:configChanges="orientation|screenSize"
             android:label="@string/app_name"
             android:screenOrientation="portrait"
             android:theme="@style/AppTheme" />
@@ -89,17 +97,14 @@
             android:name=".NotAvailableNow"
             android:label="@string/app_name"
             android:theme="@style/AppTheme" />
-        <!-- Badges -->
-        <activity
-            android:name=".BadgesActivity"
-            android:label="@string/labelAllBadges"
-            android:parentActivityName=".LoginActivity"
-            android:theme="@style/AppTheme.TitleBar" />
-        <!-- WebBrowser - For Testings only -->
-        <activity
-            android:name=".WebBrowser"
-            android:label="@string/app_name"
-            android:screenOrientation="portrait"
-            android:theme="@style/AppTheme" />
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="org.commonvoice.saverio_lib.log.TimberInitializer"
+                android:value="androidx.startup" />
+        </provider>
     </application>
 </manifest>

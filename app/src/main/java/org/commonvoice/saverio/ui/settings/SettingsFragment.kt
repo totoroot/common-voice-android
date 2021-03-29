@@ -1,72 +1,176 @@
 package org.commonvoice.saverio.ui.settings
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.*
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import androidx.core.view.isGone
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProviders
+import androidx.navigation.fragment.findNavController
+import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkManager
 import org.commonvoice.saverio.BuildConfig
-import org.commonvoice.saverio.DarkLightTheme
 import org.commonvoice.saverio.MainActivity
 import org.commonvoice.saverio.R
+import org.commonvoice.saverio.databinding.FragmentSettingsBinding
+import org.commonvoice.saverio.ui.viewBinding.ViewBoundFragment
+import org.commonvoice.saverio.utils.TranslationHandler
+import org.commonvoice.saverio.utils.onClick
+import org.commonvoice.saverio_lib.background.ClipsDownloadWorker
+import org.commonvoice.saverio_lib.background.SentencesDownloadWorker
+import org.commonvoice.saverio_lib.preferences.MainPrefManager
+import org.commonvoice.saverio_lib.viewmodels.DashboardViewModel
+import org.commonvoice.saverio_lib.viewmodels.MainActivityViewModel
+import org.koin.android.ext.android.inject
+import org.koin.androidx.viewmodel.ext.android.sharedViewModel
+import org.koin.androidx.viewmodel.ext.android.viewModel
 
+class SettingsFragment : ViewBoundFragment<FragmentSettingsBinding>() {
 
-class SettingsFragment : Fragment() {
+    override fun inflate(
+        layoutInflater: LayoutInflater,
+        container: ViewGroup?
+    ): FragmentSettingsBinding {
+        return FragmentSettingsBinding.inflate(layoutInflater, container, false)
+    }
 
-    private lateinit var settingsViewModel: SettingsViewModel
-    var languagesListShort =
-        arrayOf("en") // don't change it manually -> it will import automatically
-    var languagesList =
-        arrayOf("English") // don't change it manually -> it will import automatically
-    var isAlpha: Boolean = false
-    var theme: DarkLightTheme = DarkLightTheme()
+    private val mainPrefManager: MainPrefManager by inject()
+    private val mainViewModel by viewModel<MainActivityViewModel>()
+    private val workManager by inject<WorkManager>()
+    private val dashboardViewModel by sharedViewModel<DashboardViewModel>()
+    private val translationHandler by inject<TranslationHandler>()
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
-        settingsViewModel =
-            ViewModelProviders.of(this).get(SettingsViewModel::class.java)
-        val root = inflater.inflate(R.layout.fragment_settings, container, false)
+    private var SOURCE_STORE: String = ""
 
-        var main = (activity as MainActivity)
-        main.dashboard_selected = false
+    override fun onStart() {
+        super.onStart()
 
-        val textLanguage: TextView = root.findViewById(R.id.text_settingsLanguage)
-        textLanguage.text = getText(R.string.settingsLanguage)
-        //val model = ViewModelProviders.of(activity!!).get(SettingsViewModel::class.java)
+        withBinding {
+            buttonSettingsGoToAdvanced.onClick {
+                findNavController().navigate(R.id.advancedSettingsFragment)
+            }
 
-        var releaseNumber: TextView = root.findViewById(R.id.textRelease)
-        releaseNumber.text = BuildConfig.VERSION_NAME
+            buttonSettingsGoToOther.onClick {
+                findNavController().navigate(R.id.otherSettingsFragment)
+            }
 
-        if (BuildConfig.VERSION_NAME.contains("a")) {
-            this.isAlpha = true
+            buttonSettingsGoToExperimentalFeatures.onClick {
+                findNavController().navigate(R.id.experimentalSettingsFragment)
+            }
+
+            buttonSettingsGoToGestures.onClick {
+                findNavController().navigate(R.id.gesturesSettingsFragment)
+            }
+
+            buttonSettingsGoToListen.onClick {
+                findNavController().navigate(R.id.listenSettingsFragment)
+            }
+
+            buttonSettingsGoToSpeak.onClick {
+                findNavController().navigate(R.id.speakSettingsFragment)
+            }
+
+            buttonSettingsGoToUserInterface.onClick {
+                findNavController().navigate(R.id.UISettingsFragment)
+            }
+
+            buttonSettingsGoToOfflineMode.onClick {
+                findNavController().navigate(R.id.offlineModeSettingsFragment)
+            }
+
+            buttonSettingsGoToUsefulLinks.onClick {
+                findNavController().navigate(R.id.usefulLinksFragment)
+            }
+
+            SOURCE_STORE = MainActivity.SOURCE_STORE
         }
 
-        if (isAlpha) {
-            //alpha
-            releaseNumber.text = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
+        setupLanguageSpinner()
+
+        setupButtons()
+
+        binding.textRelease.text =
+            "${BuildConfig.VERSION_NAME} (build#${BuildConfig.VERSION_CODE}::${MainActivity.SOURCE_STORE})"
+
+        binding.textDevelopedBy.setText(R.string.txt_developed_by)
+
+        //TODO improve this method
+        (activity as MainActivity).resetStatusBarColor()
+
+        setTheme()
+    }
+
+    private fun setupButtons() = withBinding {
+        if (SOURCE_STORE == "GPS") {
+            if (!mainPrefManager.isAlpha && !mainPrefManager.isBeta) {
+                buttonReviewOnGooglePlay.isGone = false
+                separator37.isGone = false
+            }
+
+        }
+        if (SOURCE_STORE == "GPS" || SOURCE_STORE == "HAG") {
+            //TODO: remove, when implemented In-app purchare:
+            buttonBuyMeACoffee.isGone = true
+            separator28.isGone = true
         }
 
-        // import the languages list (short and "standard" from mainactivity)
-        this.languagesListShort = main.languagesListShortArray
-        this.languagesList = main.languagesListArray
+        //In-App review
+        //TODO: doesn't appear the flow "pop-up"
+        /*val manager = ReviewManagerFactory.create(requireContext())*/
+        buttonReviewOnGooglePlay.setOnClickListener {
+            /*
+            val request = manager.requestReviewFlow()
+            request.addOnCompleteListener { request ->
+                if (request.isSuccessful) {
+                    // We got the ReviewInfo object
+                    val reviewInfo = request.result
 
-        var language: Spinner = root.findViewById(R.id.languageList)
-        language.adapter = main.getLanguageList()
+                    val flow = manager.launchReviewFlow(requireActivity(), reviewInfo)
+                    flow.addOnCompleteListener { _ ->
+                        // The flow has finished. The API does not indicate whether the user
+                        // reviewed or not, or even whether the review dialog was shown. Thus, no
+                        // matter the result, we continue our app flow.
+                    }
+                } else {*/
+            //some errors, so the app can't open the in-app review pop-up
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=org.commonvoice.saverio")
+                )
+            )
+            /*}
+        }*/
+        }
 
-        var selectedLanguage: String = main.getSelectedLanguage()
+        //In-App purchase
+        //TODO: remove as comments when it's implemented
+        /*
+        if (SOURCE_STORE == "GPS") {
+            inAppPurchase()
+        } else {*/
+        buttonBuyMeACoffee.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://bit.ly/3aJnnq7")))
+        }
+        /*}*/
+    }
 
-        language.setSelection(languagesListShort.indexOf(selectedLanguage))
+    private fun inAppPurchase() {
+        //TODO In-App purchase
+    }
 
-        language.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+    private fun setupLanguageSpinner() {
+        binding.languageList.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_list_item_1,
+            translationHandler.availableLanguageNames
+        )
+
+        binding.languageList.setSelection(translationHandler.availableLanguageCodes.indexOf(mainPrefManager.language))
+
+        binding.languageList.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) {
                 //
             }
@@ -77,94 +181,49 @@ class SettingsFragment : Fragment() {
                 position: Int,
                 id: Long
             ) {
-                main.setLanguageSettings(languagesListShort.get(position))
+                val selectedLanguage = translationHandler.availableLanguageCodes[position]
+
+                if (selectedLanguage != mainPrefManager.language) {
+                    mainPrefManager.language = selectedLanguage
+
+                    mainViewModel.clearDB().invokeOnCompletion {
+                        SentencesDownloadWorker.attachOneTimeJobToWorkManager(
+                            workManager,
+                            ExistingWorkPolicy.REPLACE
+                        )
+                        ClipsDownloadWorker.attachOneTimeJobToWorkManager(
+                            workManager,
+                            ExistingWorkPolicy.REPLACE
+                        )
+
+                        mainPrefManager.hasLanguageChanged = false
+                        mainPrefManager.hasLanguageChanged2 = true
+
+                        (activity as? MainActivity)?.setLanguageUI("restart")
+                    }
+                    dashboardViewModel.lastStatsUpdate = 0
+                }
             }
         }
-
-        var textProjectGithub: Button = root.findViewById(R.id.textProjectGitHub)
-        textProjectGithub.setOnClickListener {
-            val browserIntent =
-                Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://github.com/Sav22999/common-voice-android")
-                )
-            startActivity(browserIntent)
-        }
-
-        var textDonatePaypal: Button = root.findViewById(R.id.textDonatePayPal)
-        textDonatePaypal.setOnClickListener {
-            val browserIntent =
-                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.paypal.me/saveriomorelli"))
-            startActivity(browserIntent)
-        }
-
-        var btnContactDeveloperTelegram: Button = root.findViewById(R.id.buttonContactOnTelegram)
-        btnContactDeveloperTelegram.setOnClickListener {
-            val browserIntent =
-                Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Sav22999"))
-            startActivity(browserIntent)
-        }
-
-        var btnOpenTutorial: Button = root.findViewById(R.id.buttonOpenTutorial)
-        btnOpenTutorial.setOnClickListener {
-            main.openTutorial()
-        }
-
-        var btnWebBrowserForTest: Button = root.findViewById(R.id.buttonOpenWBTests)
-        btnWebBrowserForTest.setOnClickListener {
-            main.openWebBrowserForTest()
-        }
-
-        if (isAlpha) {
-            btnWebBrowserForTest.isGone = false
-            var separator: View = root.findViewById(R.id.separator4)
-            separator.isGone = false
-        }
-
-        var txtContributors: TextView = root.findViewById(R.id.textContributors)
-        txtContributors.text = getString(R.string.txt_contributors)
-
-        var txtDevelopedBy: TextView = root.findViewById(R.id.textDevelopedBy)
-        txtDevelopedBy.text = getString(R.string.txt_developed_by)
-
-        main.checkConnection()
-
-        var switchAutoPlaySettings: Switch = root.findViewById(R.id.switchAutoPlayClips)
-        switchAutoPlaySettings.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                //ON
-            } else {
-                //OFF
-            }
-            main.setAutoPlay(isChecked)
-        }
-        switchAutoPlaySettings.isChecked = main.getAutoPlay()
-
-        var switchDarkThemeSettings: Switch = root.findViewById(R.id.switchDarkTheme)
-        switchDarkThemeSettings.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                //ON
-            } else {
-                //OFF
-            }
-            main.setDarkThemeSwitch(isChecked)
-            setTheme(main, root)
-        }
-        switchDarkThemeSettings.isChecked = theme.getTheme(main)
-
-        setTheme(main, root)
-
-        return root
     }
 
-    fun setTheme(view: Context, root: View) {
-        theme.setElements(view, root.findViewById(R.id.layoutSettings))
+    fun setTheme() {
+        withBinding {
+            theme.setElement(layoutSettings)
 
-        theme.setElement(
-            theme.getTheme(view),
-            root.findViewById(R.id.imageLanguageIcon) as ImageView,
-            R.drawable.ic_language,
-            R.drawable.ic_language_darktheme
-        )
+            theme.setElements(requireContext(), settingsSectionLanguage)
+            theme.setElements(requireContext(), settingsSectionGeneral)
+            theme.setElements(requireContext(), newSettingsSectionOther)
+            theme.setElements(requireContext(), settingsSectionBottom)
+
+            theme.setElement(requireContext(), 3, settingsSectionLanguage)
+            theme.setElement(requireContext(), 3, settingsSectionGeneral)
+            theme.setElement(requireContext(), 3, newSettingsSectionOther)
+            theme.setElement(requireContext(), 1, settingsSectionBottom)
+
+            theme.setElement(requireContext(), textDevelopedBy, textSize = 15F, background = false)
+            theme.setElement(requireContext(), textDeveloper, textSize = 25F, background = false)
+            theme.setElement(requireContext(), textRelease, textSize = 12F, background = false)
+        }
     }
 }

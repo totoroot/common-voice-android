@@ -1,22 +1,40 @@
 
 
-#  <img src="images/icon.png" width="40px" alt=""></img> Common Voice 
+#  <img src="images/icon.png" width="40px" alt=""></img> CV Project
 
-This is not the official app of the Common Voice project by Mozilla. This app is developed by Saverio Morelli, using the Android Studio IDE.
+[**Official web page of this project**](https://www.saveriomorelli.com/commonvoice/): you can find F.A.Q. and some useful links.
 
-[![Crowdin](https://badges.crowdin.net/common-voice-android/localized.svg)](https://crowdin.com/project/common-voice-android) [![Generic badge](https://img.shields.io/badge/translations%20number-11-green.svg)](https://crowdin.com/project/common-voice-android) [![GitHub release](https://img.shields.io/github/release/Sav22999/common-voice-android.svg)](https://github.com/Sav22999/common-voice-android/releases/) [![GitHub license](https://img.shields.io/github/license/Sav22999/common-voice-android.svg)](https://github.com/Sav22999/common-voice-android/blob/master/LICENSE) [![Github all releases](https://img.shields.io/github/downloads/Sav22999/common-voice-android/total.svg)](https://GitHub.com/Sav22999/common-voice-android/releases/) ![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)
+[*If you have issues with the official Common Voice website, please report them on GitHub repository so that Mozilla can fix them.*](https://bit.ly/2Z73TZZ)
 
-[<img src="images/googlePlayBadge.png" width="200px"></img>](https://play.google.com/store/apps/details?id=org.commonvoice.saverio) [<img src="images/fDroidBadge.png" width="200px"></img>](https://f-droid.org/it/packages/org.commonvoice.saverio) [<img src="images/aptoideBadge.png" height="50px"></img>](https://common-voice-android.en.aptoide.com/?store_name=sav22999) [<img src="images/crowdinBadge.png" height="50px"></img>](https://crowdin.com/project/common-voice-android)
+This is not the official app of the Common Voice project by Mozilla. This app is developed by Saverio Morelli and other contributors, using the Android Studio IDE.
 
 If you have any questions, please open an issue (you can add the label `question` there).
 
+[![Crowdin](https://badges.crowdin.net/common-voice-android/localized.svg)](https://crowdin.com/project/common-voice-android) [![GitHub release](https://img.shields.io/github/release/Sav22999/common-voice-android.svg)](https://github.com/Sav22999/common-voice-android/releases/) [![GitHub license](https://img.shields.io/github/license/Sav22999/common-voice-android.svg)](https://github.com/Sav22999/common-voice-android/blob/master/LICENSE) [![Github all releases](https://img.shields.io/github/downloads/Sav22999/common-voice-android/total.svg)](https://GitHub.com/Sav22999/common-voice-android/releases/) ![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)
+
+### Where download the app
+
+[<img src="images/badges/googlePlayBadge.png" width="200px"></img>](https://bit.ly/2Y9iqnK) [<img src="images/badges/fDroidBadge.png" width="200px"></img>](https://bit.ly/3cO8iEQ) [<img src="images/badges/huaweiAppGalleryBadge.png" width="200px"></img>](https://bit.ly/35LwCWX) [<img src="images/badges/amazonAppStoreBadge.png" width="170px"></img>](https://www.amazon.it/dp/B083QN4JPS/) [<img src="images/badges/crowdinBadge.png" width="170px"></img>](https://bit.ly/3bNBoUU)
+
+You can download the app on Google Play, on F-Droid, on Huawei AppGallery, on Amazon Appstore and also on GitHub.
+
+The app name is always "CV Project" (or Donate your voice: CV Project) and it's developed by "Saverio Morelli". It's absolutely free and you DON'T HAVE TO PAY to use it. Anyway, you can buy me a coffee, using Ko-Fi or PayPal (see the section below).
+
+### Join us on Telegram
+
+[<img src="images/icons/telegram.png" height="50px"></img>](https://bit.ly/3clgfkg) You can join the [Telegram group](https://bit.ly/3clgfkg) of the app [English], where you can ask for support or if you want to know news and updates about the app.
+
+[**You can see the anonymous Statistics**](https://bit.ly/35d2dza)
+
 You can contact me also on Telegram, with the username `@Sav22999` (I speak `Italian` and `English`); I’m always available to support you or to respond to your questions.
 
-If you like this project, leave a *Star* to receive update on your *GitHub dashboard*.
+### Support me and my work
+
+If you like this project, leave a *Star* to receive updates on your *GitHub dashboard*.
 
 To support me, you can do a donation :smile: with PayPal:
 
-[<img src="images/donatePayPal.png" width="200px"></img>](https://www.paypal.me/saveriomorelli)
+[<img src="images/badges/donatePayPal.png" width="200px"></img>](https://bit.ly/3aJnnq7) [<img src="https://cdn.ko-fi.com/cdn/kofi1.png?v=2" width="200px"></img>](https://ko-fi.com/R5R31UQ8G)
 
 ### How contribute
 
@@ -25,50 +43,50 @@ If you want to help to develop this app, you can open an `Issue` an send feedbac
 You can contribute also to translate the app (follow every step, please):
 
 1. **Open a new issue** (use `Translation` template), so others know you are translating the app in that language
-1. Then go to [Crowdin](https://crowdin.com/project/common-voice-android), choose your language (you can ask for a new language if it’s not in the list) and translate strings.
+1. Then go to [Crowdin](https://bit.ly/3bNBoUU), choose your language (you can ask for a new language if it’s not in the list) and translate strings.
 
-#### To do:
-
-- **PRIORITY**: Create `POST` request to send the recording (Now it saves the audio on device, but I don’t know how to send the audio file to CV server) -> to do tests use voice.allizom.org instead of the main server -> You should send as `opus codecs` (probably)
-
-For the full to-do-list see *Issues* section on *GitHub*
+_If your language is not now supported by [Common Voice](https://commonvoice.mozilla.org/it), **don't worry!** You can translate the app anyway, when it will be supported, the app will be already translated in your language!_
 
 ### Screenshots
 
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="200px"></img> 
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="200px"></img><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/6.png" width="200px"></img>
 
 If you want screenshots of the other versions, go to the `screenshots` folder.
 
 ### Why an Android app of Common Voice?
 
-There is already the website, which is responsive and mobile-friendly, but actually it’s very slow because of so many animations and graphic effects, which distract and annoy you. So, this app want to improve the experience of this fantastic project. You can see statistics, voices online. You can record sentences or validate clips, with a few taps. So, the app is smart, customisable, light, but powerful.
+There is already the website, which is responsive and mobile-friendly, but actually it’s very slow because of so many animations and graphic effects, which distract and annoy you. So, this app want to improve the experience of this fantastic project. You can see statistics, voices online; you can set the daily goal (it's not the same of Common Voice website); you can record sentences and validate clips, with a few taps. **You can validate and record when you are not connected to the Internet as well!** So, the app is smart, customisable, light, and **powerful**.
 
-### Translators
+### Gestures
 
-The app is officially translated in these following languages, **thank you very much** to the contributors who translated the app.
+You can read more about Gesture here: [https://www.saveriomorelli.com/commonvoice/gestures/](https://bit.ly/3phQ0lP)
 
-- `cs` Czech -> [**acrylicpaintboy**](https://crowdin.com/profile/acrylicpaintboy)
-- `de` German -> [**acrylicpaintboy**](https://crowdin.com/profile/acrylicpaintboy), [**Moini**](https://github.com/Moini)
-- `en` English (main language)
-- `es` Spanish -> [**acrylicpaintboy**](https://crowdin.com/profile/acrylicpaintboy)
-- `et` Estonian -> [**Agu Ratas**](https://crowdin.com/profile/aguratas)
-- `eu` Basque -> **[Mielanjel Iraeta](https://crowdin.com/profile/pospolos)**
-- `fr` French -> **[PoorPockets McNewHold](https://crowdin.com/profile/IfiwFR)**, [**acrylicpaintboy**](https://crowdin.com/profile/acrylicpaintboy)
-- `ia` Interlingua -> **[Carmelo Serraino](https://crowdin.com/profile/Melo46)**
-- `it` Italian -> **[Saverio Morelli](https://github.com/Sav22999)**
-- `ru` Russian -> **[Anton Nesterov](https://github.com/komachi)**
-- `sv-SE` Swedish -> **[Linus Amvall](https://github.com/klasrocket)**, [**acrylicpaintboy**](https://crowdin.com/profile/acrylicpaintboy)
+### Offline mode
+
+You can read more about Offline mode here: [https://www.saveriomorelli.com/commonvoice/offline-mode/](https://bit.ly/3nJwpuq)
+
+### Translations
+
+The app is translated in many languages, see list on Crowdin:  [<img src="images/badges/crowdinBadge.png" width="170px"></img>](https://bit.ly/3bNBoUU)
+
+Thanks everyone translate it!
 
 ### License
 
-The license of *Common Voice Android* is GPLv3.
+The license of *CV Project* is GPLv3.
 
-<img src="images/gpl.png" width="100px"></img>
+<img src="images/icons/gpl.png" width="100px"></img>
+
+### Privacy policy
+
+You can read the specific file: [PRIVACY.md](PRIVACY.md)
+
+### API Documentation
+
+You can read the specific file about API (just relative to my website): [API.md](API.md)
 
 
 
-![Generic badge](https://img.shields.io/badge/built%20in-Android%20Studio-green.svg) ![Generic badge](https://img.shields.io/badge/developed%20in-Kotlin-blue.svg)
+![Generic badge](https://img.shields.io/badge/built%20in-Android%20Studio-green.svg) ![Generic badge](https://img.shields.io/badge/developed%20in-Kotlin-blue.svg) ![GitHub last commit](https://img.shields.io/github/last-commit/Sav22999/common-voice-android) [![Generic badge](https://img.shields.io/badge/developed%20by-Sav22999-lightgrey.svg)](https://saveriomorelli.com)
 
-![GitHub last commit](https://img.shields.io/github/last-commit/Sav22999/common-voice-android) [![Generic badge](https://img.shields.io/badge/developed%20by-Sav22999-lightgrey.svg)](https://saveriomorelli.com)
-
-[<img src="https://www.saveriomorelli.com/images/badges/a-project-of.png" width="200px"></img>](https://saveriomorelli.com) [<img src="https://www.saveriomorelli.com/images/badges/realised-by.png" width="200px"></img>](https://saveriomorelli.com)
+[<img src="https://www.saveriomorelli.com/images/badges/a-project-of.png" width="170px"></img>](https://saveriomorelli.com/projects)  [<img src="https://www.saveriomorelli.com/images/badges/realised-by.png" width="170px"></img>](https://saveriomorelli.com)

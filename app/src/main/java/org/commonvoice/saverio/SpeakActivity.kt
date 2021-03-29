@@ -1,791 +1,586 @@
 package org.commonvoice.saverio
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.annotation.TargetApi
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.media.MediaMetadataRetriever
-import android.media.MediaPlayer
-import android.media.MediaRecorder
-import android.net.ConnectivityManager
-import android.net.Uri
-import android.os.Build
+import android.content.res.Configuration
 import android.os.Bundle
-import android.os.LocaleList
-import android.webkit.WebView
-import android.widget.Button
-import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.constraintlayout.widget.ConstraintLayout
+import android.util.DisplayMetrics
+import android.util.TypedValue
+import android.view.View
+import android.widget.ImageView
+import androidx.core.animation.doOnEnd
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
+import androidx.core.view.children
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
-import com.android.volley.AuthFailureError
-import com.android.volley.Request
-import com.android.volley.Response
-import com.android.volley.toolbox.JsonArrayRequest
-import com.android.volley.toolbox.StringRequest
-import com.android.volley.toolbox.Volley
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
-import java.net.URLEncoder.encode
-import java.nio.charset.Charset
-import java.nio.file.Files
-import java.nio.file.Paths
-import java.text.SimpleDateFormat
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
+import androidx.core.widget.NestedScrollView
+import androidx.lifecycle.lifecycleScope
+import kotlinx.android.synthetic.main.activity_speak.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.commonvoice.saverio.databinding.ActivitySpeakBinding
+import org.commonvoice.saverio.ui.dialogs.NoClipsSentencesAvailableDialog
+import org.commonvoice.saverio.ui.dialogs.SpeakReportDialogFragment
+import org.commonvoice.saverio.ui.viewBinding.ViewBoundActivity
+import org.commonvoice.saverio.utils.OnSwipeTouchListener
+import org.commonvoice.saverio.utils.onClick
+import org.commonvoice.saverio_ads.AdLoader
+import org.commonvoice.saverio_lib.api.network.ConnectionManager
+import org.commonvoice.saverio_lib.dataClasses.BadgeDialogMediator
+import org.commonvoice.saverio_lib.models.Sentence
+import org.commonvoice.saverio_lib.preferences.SettingsPrefManager
+import org.commonvoice.saverio_lib.preferences.SpeakPrefManager
+import org.commonvoice.saverio_lib.preferences.StatsPrefManager
+import org.commonvoice.saverio_lib.viewmodels.SpeakViewModel
+import org.koin.android.ext.android.inject
+import org.koin.androidx.viewmodel.ext.android.stateViewModel
 import java.util.*
-import kotlin.collections.HashMap
 
+class SpeakActivity : ViewBoundActivity<ActivitySpeakBinding>(
+    ActivitySpeakBinding::inflate
+) {
 
-class SpeakActivity : AppCompatActivity() {
+    companion object {
+        private const val RECORD_REQUEST_CODE = 101
+    }
 
-    private val RECORD_REQUEST_CODE = 101
-    private lateinit var webView: WebView
-    private var PRIVATE_MODE = 0
-    private val LANGUAGE_NAME = "LANGUAGE"
-    private val LOGGED_IN_NAME = "LOGGED" //false->no logged-in || true -> logged-in
-    private val USER_CONNECT_ID = "USER_CONNECT_ID"
-    private val FIRST_RUN_SPEAK = "FIRST_RUN_SPEAK"
-    private val TODAY_CONTRIBUTING =
-        "TODAY_CONTRIBUTING" //saved as "yyyy/mm/dd, n_recorded, n_validated"
+    private val speakViewModel: SpeakViewModel by stateViewModel()
 
-    var url: String =
-        "https://voice.mozilla.org/api/v1/{{*{{lang}}*}}/" //API url -> replace {{*{{lang}}*}} with the selected_language
-    var tempUrl: String =
-        "https://voice.allizom.org/api/v1/{{*{{lang}}*}}/" //TEST API url
+    private val connectionManager: ConnectionManager by inject()
+    private val statsPrefManager: StatsPrefManager by inject()
 
-    val urlWithoutLang: String =
-        "https://voice.mozilla.org/api/v1/" //API url (without lang)
+    private var numberSentThisSession: Int = 0
+    private var verticalScrollStatus: Int = 2 //0 top, 1 middle, 2 end
 
-    var idSentence: String = ""
-    var textSentence: String = ""
-    var status: Int =
-        0 //1->recording started | 2->recording finished | 3->recording listened | 4->recording sent | 5->listening stopped | 6->recording too long
+    private var isAudioBarVisible: Boolean = false
+    private var animationsCount: Int = 0
 
-    var selectedLanguage = ""
-    var mediaRecorder: MediaRecorder? = null //audio recorder
-    var output: String? = null //path of the recording
-    var mediaPlayer: MediaPlayer? = null //audio player
-
-    var listened_first_time: Boolean = false
+    private val settingsPrefManager by inject<SettingsPrefManager>()
+    private val speakPrefManager by inject<SpeakPrefManager>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_speak)
 
-        var firstRun: Boolean =
-            getSharedPreferences(FIRST_RUN_SPEAK, PRIVATE_MODE).getBoolean(FIRST_RUN_SPEAK, true)
-        if (firstRun) {
-            //First-run
-            val intent = Intent(this, FirstRunSpeak::class.java).also {
-                startActivity(it)
-                finish()
+        setupInitialUIState()
+
+        setupUI()
+    }
+
+    private fun checkOfflineMode(available: Boolean) {
+        if (!speakViewModel.showingHidingOfflineIcon && (speakViewModel.offlineModeIconVisible == available)) {
+            speakViewModel.showingHidingOfflineIcon = true
+            if (!available && settingsPrefManager.isOfflineMode) {
+                startAnimation(binding.imageOfflineModeSpeak, R.anim.zoom_in_speak_listen)
+                speakViewModel.offlineModeIconVisible = true
+                if (mainPrefManager.showOfflineModeMessage) {
+                    showMessageDialog("", "", 10)
+                }
+            } else if (!settingsPrefManager.isOfflineMode) {
+                showMessageDialog("", getString(R.string.offline_mode_is_not_enabled), type = 13)
+            } else {
+                startAnimation(binding.imageOfflineModeSpeak, R.anim.zoom_out_speak_listen)
+                speakViewModel.offlineModeIconVisible = false
             }
-        } else {
-            checkPermissions()
-            checkConnection()
-
-            this.selectedLanguage =
-                getSharedPreferences(LANGUAGE_NAME, PRIVATE_MODE).getString(LANGUAGE_NAME, "en")
-            this.url = this.url.replace("{{*{{lang}}*}}", this.selectedLanguage)
-
-            var skipButton: Button = this.findViewById(R.id.btn_skip_speak)
-            skipButton.setOnClickListener {
-                StopRecording()
-                StopListening()
-                API_request()
-            }
-
-            var startStopRecording: Button = this.findViewById(R.id.btn_start_speak)
-            startStopRecording.setOnClickListener {
-                if (this.status == 0 || this.status == 3)
-                    StartRecording() //0->record | 3->record again
-                else if (this.status == 1)
-                    StopRecording()
-                else if (this.status == 2)
-                    ListenRecording()
-                else if (this.status == 5)
-                    StopListening()
-            }
-
-            var sendRecording: Button = this.findViewById(R.id.btn_send_speak)
-            sendRecording.setOnClickListener {
-                SendRecording()
-            }
-
-            var listenAgain: Button = this.findViewById(R.id.btn_listen_again)
-            listenAgain.setOnClickListener {
-                ListenRecording()
-            }
-            //API request
-            API_request()
+            speakViewModel.showingHidingOfflineIcon = false
+            binding.imageOfflineModeSpeak.isGone = available
         }
+    }
+
+    fun setShowOfflineModeMessage(value: Boolean = true) {
+        mainPrefManager.showOfflineModeMessage = value
+    }
+
+    override fun onBackPressed() = withBinding {
+        textMessageAlertSpeak.setText(R.string.txt_closing)
+        buttonStartStopSpeak.setBackgroundResource(R.drawable.speak_cv)
+        textSentenceSpeak.text = "···"
+        textSentenceSpeak.setTextSize(
+            TypedValue.COMPLEX_UNIT_PX,
+            resources.getDimension(R.dimen.title_very_big)
+        )
+        buttonRecordOrListenAgain.isGone = true
+        if (settingsPrefManager.showReportIcon) {
+            hideImage(imageReportIconSpeak)
+        } else {
+            buttonReportSpeak.isGone = true
+        }
+        buttonSkipSpeak.isEnabled = false
+        buttonStartStopSpeak.isEnabled = false
+        buttonSendSpeak.isGone = true
+        speakSectionAudioBar.isGone = true
+
+        speakViewModel.stop(true)
+
+        hideAudioBar()
+
+        super.onBackPressed()
+    }
+
+    private fun setupUI() {
+        binding.imageOfflineModeSpeak.onClick {
+            lifecycleScope.launch {
+                val count = speakViewModel.getSentencesCount()
+                withContext(Dispatchers.Main) {
+                    NoClipsSentencesAvailableDialog(this@SpeakActivity, true, count, theme).show()
+                }
+            }
+        }
+
+        connectionManager.liveInternetAvailability.observe(this, { available ->
+            checkOfflineMode(available)
+        })
+
+        speakViewModel.hasFinishedSentences.observe(this, {
+            if (it && !connectionManager.isInternetAvailable) {
+                NoClipsSentencesAvailableDialog(this, true, 0, theme).show {
+                    onBackPressed()
+                }
+            }
+        })
+
+        speakViewModel.currentSentence.observe(this, { sentence ->
+            setupUIStateStandby(sentence)
+        })
+
+        if (mainPrefManager.areGesturesEnabled) {
+            setupGestures()
+        }
+
+        speakViewModel.state.observe(this, {
+            checkState(it)
+        })
+
+        statsPrefManager.dailyGoal.observe(this, {
+            if ((numberSentThisSession > 0) && it.checkDailyGoal()) {
+                stopAndRefresh()
+                showMessageDialog(
+                    "",
+                    getString(R.string.daily_goal_achieved_message).replace(
+                        "{{*{{n_clips}}*}}",
+                        "${it.validations}"
+                    ).replace(
+                        "{{*{{n_sentences}}*}}",
+                        "${it.recordings}"
+                    ), type = 12
+                )
+            }
+
+            animateProgressBar(
+                progressBarSpeakSpeak,
+                sum = it.recordings + it.validations,
+                dailyGoal = it.getDailyGoal(),
+                currentContributions = it.recordings,
+                color = R.color.colorSpeak
+            )
+            animateProgressBar(
+                progressBarSpeakListen,
+                sum = it.recordings + it.validations,
+                dailyGoal = it.getDailyGoal(),
+                currentContributions = it.validations,
+                color = R.color.colorListen
+            )
+        })
+
+        checkPermission()
+
+        setupNestedScroll()
+
         setTheme(this)
+
+        setupBadgeDialog()
+
+        if (speakPrefManager.showAdBanner) {
+            AdLoader.setupSpeakAdView(this, binding.adContainer)
+        }
     }
 
-    fun setTheme(view: Context) {
-        var theme: DarkLightTheme = DarkLightTheme()
+    fun refreshAds() {
+        if (speakPrefManager.showAdBanner) {
+            AdLoader.setupSpeakAdView(this, binding.adContainer)
+        }
+    }
 
-        var isDark = theme.getTheme(view)
-        theme.setElement(isDark, this.findViewById(R.id.layoutSpeak) as ConstraintLayout)
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+
+        animateProgressBar(
+            progressBarSpeakSpeak,
+            sum = statsPrefManager.dailyGoal.value!!.recordings + statsPrefManager.dailyGoal.value!!.validations,
+            dailyGoal = statsPrefManager.dailyGoal.value!!.goal,
+            currentContributions = statsPrefManager.dailyGoal.value!!.recordings,
+            color = R.color.colorSpeak
+        )
+        animateProgressBar(
+            progressBarSpeakListen,
+            sum = statsPrefManager.dailyGoal.value!!.recordings + statsPrefManager.dailyGoal.value!!.validations,
+            dailyGoal = statsPrefManager.dailyGoal.value!!.goal,
+            currentContributions = statsPrefManager.dailyGoal.value!!.validations,
+            color = R.color.colorListen
+        )
+
+        refreshAds()
+    }
+
+    fun shareCVAndroidDailyGoal() {
+        val shareIntent = Intent(Intent.ACTION_SEND)
+        shareIntent.type = "type/palin"
+        val textToShare = getString(R.string.share_daily_goal_text_on_social).replace(
+            "{{*{{link}}*}}",
+            "https://bit.ly/2XhnO7h"
+        )
+        shareIntent.putExtra(Intent.EXTRA_SUBJECT, textToShare)
+        startActivity(Intent.createChooser(shareIntent, getString(R.string.share_daily_goal_title)))
+    }
+
+    private fun checkState(status: SpeakViewModel.Companion.State?) {
+        when (status) {
+            SpeakViewModel.Companion.State.STANDBY -> {
+                loadUIStateLoading()
+                speakViewModel.loadNewSentence()
+            }
+            SpeakViewModel.Companion.State.NO_MORE_SENTENCES -> {
+                loadUIStateNoMoreSentences()
+                speakViewModel.loadNewSentence()
+            }
+            SpeakViewModel.Companion.State.RECORDING -> {
+                loadUIStateRecording()
+                isAudioBarVisible = true
+                animateAudioBar()
+            }
+            SpeakViewModel.Companion.State.RECORDED -> {
+                loadUIStateRecorded()
+            }
+            SpeakViewModel.Companion.State.LISTENING -> {
+                loadUIStateListening()
+            }
+            SpeakViewModel.Companion.State.LISTENED -> {
+                loadUIStateListened()
+            }
+            SpeakViewModel.Companion.State.RECORDING_ERROR -> {
+                this.stopAndRefresh()
+                showMessageDialog("", getString(R.string.messageDialogGenericError), type = 7)
+                speakViewModel.currentSentence.value?.let { sentence ->
+                    setupUIStateStandby(sentence)
+                }
+            }
+            SpeakViewModel.Companion.State.RECORDING_TOO_SHORT -> {
+                showMessageDialog("", getString(R.string.txt_recording_too_short), type = 7)
+                speakViewModel.currentSentence.value?.let { sentence ->
+                    setupUIStateStandby(sentence)
+                }
+            }
+            SpeakViewModel.Companion.State.RECORDING_TOO_LONG -> {
+                showMessageDialog("", getString(R.string.txt_recording_too_long), type = 7)
+                speakViewModel.currentSentence.value?.let { sentence ->
+                    setupUIStateStandby(sentence)
+                }
+            }
+        }
+    }
+
+    private fun showMessageDialog(title: String, text: String, type: Int = 0) {
+        val metrics = DisplayMetrics()
+        windowManager.defaultDisplay.getMetrics(metrics)
+        //val width = metrics.widthPixels
+        val height = metrics.heightPixels
+        val msg = MessageDialog(this, type, title, text, details = "", height = height)
+        msg.setSpeakActivity(this)
+        msg.show()
+    }
+
+    private fun setupNestedScroll() {
+        binding.nestedScrollSpeak.setOnScrollChangeListener(NestedScrollView.OnScrollChangeListener { nestedScrollView, _, scrollY, _, oldScrollY ->
+            if (scrollY > oldScrollY) {
+                verticalScrollStatus = 1
+            }
+            if (scrollY < oldScrollY) {
+                verticalScrollStatus = 1
+            }
+            if (scrollY == 0) {
+                verticalScrollStatus = 0
+            }
+            if (nestedScrollView.measuredHeight == (nestedScrollView.getChildAt(0).measuredHeight - scrollY)) {
+                verticalScrollStatus = 2
+            }
+        })
+    }
+
+    private fun setupGestures() {
+        binding.nestedScrollSpeak.setOnTouchListener(object :
+            OnSwipeTouchListener(this@SpeakActivity) {
+            override fun onSwipeLeft() {
+                speakViewModel.skipSentence()
+            }
+
+            override fun onSwipeRight() {
+                onBackPressed()
+            }
+
+            override fun onSwipeTop() {
+                if (verticalScrollStatus == 2) {
+                    openReportDialog()
+                }
+            }
+        })
+    }
+
+    fun setTheme(view: Context) = withBinding {
+        theme.setElement(layoutSpeak)
+        theme.setElement(view, buttonSendSpeak)
+        theme.setElement(view, 1, speakSectionBottom)
         theme.setElement(
-            isDark,
             view,
-            this.findViewById(R.id.textMessageAlertSpeak) as TextView,
+            textMessageAlertSpeak,
             R.color.colorAlertMessage,
-            R.color.colorAlertMessageDT
+            R.color.colorAlertMessageDT,
+            textSize = 15F
         )
-        theme.setElement(isDark, view, this.findViewById(R.id.btn_skip_speak) as Button)
+        theme.setElement(view, buttonReportSpeak, background = false)
+        theme.setElement(view, buttonSkipSpeak)
+
+        setProgressBarColour(progressBarSpeakSpeak, false)
+        setProgressBarColour(progressBarSpeakListen, false)
     }
 
-    fun getDateToSave(savedDate: String): String {
-        var todayDate: String = "?"
-        if (Build.VERSION.SDK_INT < 26) {
-            val dateTemp = SimpleDateFormat("yyyy/MM/dd")
-            todayDate = dateTemp.format(Date()).toString()
-        } else {
-            val dateTemp = LocalDateTime.now()
-            todayDate =
-                dateTemp.year.toString() + "/" + dateTemp.monthValue.toString() + "/" + dateTemp.dayOfMonth.toString()
-        }
-        if (checkDateToday(todayDate, savedDate)) {
-            return savedDate
-        } else {
-            return todayDate
-        }
-    }
-
-    fun checkDateToday(todayDate: String, savedDate: String): Boolean {
-        //true -> savedDate is OK, false -> savedDate is old
-        if (todayDate == "?" || savedDate == "?") {
-            return false
-        } else if (todayDate == savedDate) {
-            return true
-        } else if (todayDate.split("/")[0] > savedDate.split("/")[0]) {
-            return false
-        } else if (todayDate.split("/")[1] > savedDate.split("/")[1]) {
-            return false
-        } else if (todayDate.split("/")[2] > savedDate.split("/")[2]) {
-            return false
-        } else {
-            return true
-        }
-    }
-
-    fun incrementContributing() {
-        //just if the user is logged-in
-        if (getSharedPreferences(LOGGED_IN_NAME, PRIVATE_MODE).getBoolean(LOGGED_IN_NAME, false)) {
-            //user logged
-            var contributing = getSharedPreferences(TODAY_CONTRIBUTING, PRIVATE_MODE).getString(
-                TODAY_CONTRIBUTING,
-                "?, ?, ?"
-            ).split(", ")
-            var dateContributing = contributing[0]
-            var dateContributingToSave = getDateToSave(dateContributing)
-            var nRecorded: String = "?"
-            if (dateContributingToSave == dateContributing) {
-                //same date
-                nRecorded = contributing[1]
-                if (nRecorded == "?") {
-                    nRecorded = "0"
-                }
-            } else {
-                //new date
-                nRecorded = "0"
+    private fun openReportDialog() {
+        if (!binding.buttonReportSpeak.isGone || !binding.imageReportIconSpeak.isGone) {
+            if (speakViewModel.state.value == SpeakViewModel.Companion.State.RECORDING) {
+                speakViewModel.stopRecording()
             }
-            nRecorded = (nRecorded.toInt() + 1).toString()
-            var contributingToSave =
-                dateContributingToSave + ", " + nRecorded + ", " + contributing[2]
-            getSharedPreferences(TODAY_CONTRIBUTING, PRIVATE_MODE).edit()
-                .putString(TODAY_CONTRIBUTING, contributingToSave).apply()
-        } else {
-            //user no logged
+
+            SpeakReportDialogFragment().show(supportFragmentManager, "SPEAK_REPORT")
         }
     }
 
-    fun showMessageDialog(
-        title: String,
-        text: String,
-        errorCode: String = "",
-        details: String = ""
-    ) {
-        try {
-            var messageText = text
-            if (errorCode != "") {
-                if (messageText.contains("{{*{{error_code}}*}}")) {
-                    messageText = messageText.replace("{{*{{error_code}}*}}", errorCode)
-                } else {
-                    messageText = messageText + "\n\n[Message Code: EX-" + errorCode + "]"
-                }
+    private fun stopAndRefresh() {
+        speakViewModel.stop()
+        speakViewModel.currentSentence.value?.let { sentence ->
+            setupUIStateStandby(sentence)
+        }
+        hideAudioBar()
+    }
+
+    private fun setupInitialUIState() = withBinding {
+        buttonSkipSpeak.onClick {
+            speakViewModel.skipSentence()
+        }
+
+        buttonReportSpeak.onClick {
+            openReportDialog()
+        }
+
+        imageReportIconSpeak.onClick {
+            openReportDialog()
+        }
+
+        buttonRecordOrListenAgain.onClick {
+            speakViewModel.startListening()
+        }
+
+        buttonSendSpeak.onClick {
+            speakViewModel.sendRecording()
+            numberSentThisSession++
+            if (numberSentThisSession % 10 == 0) {
+                //refreshAds()
             }
-            val message: MessageDialog =
-                MessageDialog(this, 0, title, messageText, details = details)
-            message.show()
-        } catch (exception: Exception) {
-            println("!!-- Exception: SpeakActivity - MESSAGE DIALOG: " + exception.toString() + " --!!")
+        }
+
+        startAnimation(buttonStartStopSpeak, R.anim.zoom_in_speak_listen)
+        startAnimation(buttonSkipSpeak, R.anim.zoom_in_speak_listen)
+    }
+
+    private fun loadUIStateLoading() = withBinding {
+        textMessageAlertSpeak.setText(R.string.txt_loading_sentence)
+        textSentenceSpeak.text = "···"
+
+        resizeSentence()
+
+        buttonRecordOrListenAgain.isGone = true
+        if (settingsPrefManager.showReportIcon) {
+            hideImage(imageReportIconSpeak)
+        } else {
+            buttonReportSpeak.isGone = true
+        }
+        buttonSendSpeak.isGone = true
+        buttonSkipSpeak.isEnabled = false
+        buttonStartStopSpeak.isEnabled = false
+    }
+
+    private fun loadUIStateNoMoreSentences() = withBinding {
+        textMessageAlertSpeak.setText(R.string.txt_common_voice_sentences_finished)
+        textSentenceSpeak.text = "···"
+
+        resizeSentence()
+
+        buttonRecordOrListenAgain.isGone = true
+        if (settingsPrefManager.showReportIcon) {
+            hideImage(imageReportIconSpeak)
+        } else {
+            buttonReportSpeak.isGone = true
+        }
+        buttonSendSpeak.isGone = true
+        buttonSkipSpeak.isEnabled = false
+        buttonStartStopSpeak.isEnabled = false
+    }
+
+    private fun setupUIStateStandby(sentence: Sentence) = withBinding {
+        buttonSkipSpeak.isEnabled = true
+        buttonStartStopSpeak.isEnabled = true
+
+        if (settingsPrefManager.showReportIcon) {
+            showImage(imageReportIconSpeak)
+        } else {
+            buttonReportSpeak.isGone = false
+        }
+
+        buttonSendSpeak.isGone = true
+
+        buttonRecordOrListenAgain.isGone = true
+        buttonStartStopSpeak.setBackgroundResource(R.drawable.speak_cv)
+
+        hideAudioBar()
+
+        textMessageAlertSpeak.setText(R.string.txt_press_icon_below_speak_1)
+        textSentenceSpeak.text = sentence.sentenceText
+
+        resizeSentence()
+
+        buttonStartStopSpeak.onClick {
+            checkPermission()
+            speakViewModel.startRecording()
         }
     }
 
-    fun API_request() {
-        DeleteRecording()
-        checkConnection()
-        this.listened_first_time = false
+    private fun resizeSentence() {
+        binding.textSentenceSpeak.setTextSize(
+            TypedValue.COMPLEX_UNIT_PX,
+            when (binding.textSentenceSpeak.text.length) {
+                in 0..10 -> resources.getDimension(R.dimen.title_very_big) * mainPrefManager.textSize
+                in 11..20 -> resources.getDimension(R.dimen.title_big) * mainPrefManager.textSize
+                in 21..40 -> resources.getDimension(R.dimen.title_medium) * mainPrefManager.textSize
+                in 41..70 -> resources.getDimension(R.dimen.title_normal) * mainPrefManager.textSize
+                else -> resources.getDimension(R.dimen.title_small) * mainPrefManager.textSize
+            }
+        )
+    }
 
-        var sentence: TextView = this.findViewById(R.id.textSpeakSentence)
-        var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-        var btnSend: Button = this.findViewById(R.id.btn_send_speak)
-        var btnListenAgain: Button = this.findViewById(R.id.btn_listen_again)
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        var btnSkip: Button = this.findViewById(R.id.btn_skip_speak)
-        this.idSentence = ""
-        this.textSentence = ""
-        btnRecord.isEnabled = false
-        btnSend.isVisible = false
-        btnListenAgain.isGone = true
-        btnListenAgain.isVisible = false
-        btnSkip.isEnabled = false
-        this.status = 0
-        msg.text = getText(R.string.txt_loading_sentence)
-        sentence.text = "..."
-        btnRecord.setBackgroundResource(R.drawable.speak_cv)
+    private fun loadUIStateRecording() = withBinding {
+        buttonRecordOrListenAgain.isGone = true
+        buttonStartStopSpeak.setBackgroundResource(R.drawable.stop_cv)
 
-        try {
-            val path = "sentences" //API to get sentences
-            val params = JSONArray()
-            //params.put("")
+        buttonSendSpeak.isGone = true
+        textMessageAlertSpeak.setText(R.string.txt_press_icon_below_speak_2)
+        speakViewModel.isFirstTimeListening = true
 
-            val que = Volley.newRequestQueue(this)
-            val req = object : JsonArrayRequest(Request.Method.GET, url + path, params,
-                Response.Listener {
-                    val jsonResult = it.toString()
-                    if (jsonResult.length > 2) {
-                        val jsonObj = JSONObject(
-                            jsonResult.substring(
-                                jsonResult.indexOf("{"),
-                                jsonResult.lastIndexOf("}") + 1
+        buttonStartStopSpeak.onClick {
+            checkPermission()
+            speakViewModel.stopRecording()
+        }
+    }
+
+    private fun loadUIStateRecorded() = withBinding {
+        buttonRecordOrListenAgain.isGone = false
+        startAnimation(buttonRecordOrListenAgain, R.anim.zoom_in_speak_listen)
+        buttonRecordOrListenAgain.setBackgroundResource(R.drawable.speak2_cv)
+
+        buttonStartStopSpeak.setBackgroundResource(R.drawable.listen2_cv)
+        textMessageAlertSpeak.setText(R.string.txt_press_icon_below_listen_1)
+
+        buttonStartStopSpeak.onClick {
+            speakViewModel.startListening()
+        }
+
+        buttonRecordOrListenAgain.onClick {
+            checkPermission()
+            speakViewModel.redoRecording()
+        }
+    }
+
+    private fun loadUIStateListening() = withBinding {
+        buttonRecordOrListenAgain.isGone = true
+        buttonStartStopSpeak.setBackgroundResource(R.drawable.stop_cv)
+        textMessageAlertSpeak.setText(R.string.txt_press_icon_below_listen_2)
+
+        buttonStartStopSpeak.onClick {
+            speakViewModel.stopListening()
+        }
+    }
+
+    private fun loadUIStateListened() = withBinding {
+        buttonSendSpeak.isGone = false
+
+        if (speakViewModel.isFirstTimeListening) {
+            startAnimation(buttonSendSpeak, R.anim.zoom_in_speak_listen)
+            speakViewModel.isFirstTimeListening = false
+        }
+
+        textMessageAlertSpeak.setText(R.string.txt_recorded_correct_or_wrong)
+        buttonRecordOrListenAgain.isGone = false
+        startAnimation(buttonRecordOrListenAgain, R.anim.zoom_in_speak_listen)
+        buttonRecordOrListenAgain.setBackgroundResource(R.drawable.listen2_cv)
+        buttonStartStopSpeak.setBackgroundResource(R.drawable.speak2_cv)
+
+
+        buttonStartStopSpeak.onClick {
+            checkPermission()
+            speakViewModel.redoRecording()
+        }
+
+        buttonRecordOrListenAgain.onClick {
+            speakViewModel.startListening()
+        }
+    }
+
+    private fun setupBadgeDialog(): Any = if (mainPrefManager.isLoggedIn) {
+        lifecycleScope.launch {
+            statsPrefManager.badgeLiveData.collect {
+                if (it is BadgeDialogMediator.Speak || it is BadgeDialogMediator.Level) {
+                    showMessageDialog(
+                        title = "",
+                        text = getString(R.string.new_badge_earnt_message)
+                            .replace("{{*{{profile}}*}}", getString(R.string.button_home_profile))
+                            .replace(
+                                "{{*{{all_badges}}*}}",
+                                getString(R.string.btn_badges_loggedin)
                             )
-                        )
-                        this.idSentence = jsonObj.getString("id")
-                        this.textSentence = jsonObj.getString("text")
-                        sentence.text = this.textSentence
-                        btnRecord.isEnabled = true
-                        msg.text = getString(R.string.txt_press_icon_below_speak_1)
-                    } else {
-                        //println(" -->> Something wrong: "+it.toString()+" <<-- ")
-                        error1()
-                    }
-                    btnSkip.isEnabled = true
-                }, Response.ErrorListener {
-                    //println(" -->> Something wrong: "+it.toString()+" <<-- ")
-                    error1()
-                    btnSkip.isEnabled = true
-                }
-            ) {
-                @Throws(AuthFailureError::class)
-                override fun getHeaders(): Map<String, String> {
-                    val headers = HashMap<String, String>()
-                    var logged = getSharedPreferences(
-                        LOGGED_IN_NAME,
-                        PRIVATE_MODE
-                    ).getBoolean(LOGGED_IN_NAME, false)
-                    if (logged) {
-                        var cookieId =
-                            getSharedPreferences(USER_CONNECT_ID, PRIVATE_MODE).getString(
-                                USER_CONNECT_ID,
-                                ""
-                            )
-                        headers.put(
-                            "Cookie",
-                            "connect.sid=" + cookieId
-                        )
-                    } else {
-                        headers.put(
-                            "Authorization",
-                            "Basic OWNlYzFlZTgtZGZmYS00YWU1LWI3M2MtYjg3NjM1OThjYmVjOjAxOTdmODU2NjhlMDQ3NTlhOWUxNzZkM2Q2MDdkOTEzNDE3ZGZkMjA="
-                        )
-                    }
-                    return headers
-                }
-            }
-            que.add(req)
-        } catch (e: Exception) {
-            error1()
-            btnSkip.isEnabled = true
-        }
-    }
-
-    fun error1() {
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        var skipText: Button = this.findViewById(R.id.btn_skip_speak)
-        msg.text = getString(R.string.txt_error_1_try_again_tap_skip).replace(
-            "{{*{{skip_button}}*}}",
-            skipText.text.toString()
-        )
-        skipText.isEnabled = true
-        this.listened_first_time = false
-        //EXS04
-        showMessageDialog(
-            "",
-            getString(R.string.txt_error_1_try_again_tap_skip).replace(
-                "{{*{{skip_button}}*}}",
-                skipText.text.toString()
-            ),
-            errorCode = "S04"
-        )
-    }
-
-    fun error2() {
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        msg.text = getString(R.string.txt_error_2_sending_failed)
-
-        var skipText: Button = this.findViewById(R.id.btn_skip_speak)
-        skipText.isEnabled = true
-        var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-        btnRecord.setBackgroundResource(R.drawable.speak2_cv)
-        btnRecord.isEnabled = true
-        this.status = 3
-        this.listened_first_time = false
-
-        //EXS03
-        showMessageDialog(
-            getString(R.string.messageDialogErrorTitle),
-            getString(R.string.txt_error_2_sending_failed),
-            errorCode = "S03"
-        )
-    }
-
-    override fun onBackPressed() {
-        closeSpeak()
-    }
-
-    fun closeSpeak() {
-        var btnSkip: Button = this.findViewById(R.id.btn_skip_speak)
-        var txtSentence: TextView = this.findViewById(R.id.textSpeakSentence)
-        if (btnSkip.isEnabled || txtSentence.text == "...") {
-            StopRecording()
-            DeleteRecording()
-            var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-            btnSkip.isEnabled = false
-            msg.text = getString(R.string.txt_closing)
-            finish()
-        }
-    }
-
-    fun StartRecording() {
-        //start or re-start recording
-        checkPermissions()
-        try {
-            this.listened_first_time = false
-            mediaRecorder = MediaRecorder()
-            output = externalCacheDir?.absolutePath + "/" + this.idSentence + ".mp3"
-            mediaRecorder?.setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
-            if (Build.VERSION.SDK_INT < 26) {
-                mediaRecorder?.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-                //println(" -->> Versione API < 26")
-            } else {
-                mediaRecorder?.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                //println(" -->> Versione API >= 26")
-            }
-            mediaRecorder?.setAudioEncoder(MediaRecorder.AudioEncoder.HE_AAC)
-            mediaRecorder?.setMaxDuration(10001)
-            mediaRecorder?.setOutputFile(output)
-            mediaRecorder?.setAudioEncodingBitRate(16 * 44100)
-            mediaRecorder?.setAudioSamplingRate(44100)
-            mediaRecorder?.prepare()
-            mediaRecorder?.start()
-
-            var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-            var btnSend: Button = this.findViewById(R.id.btn_send_speak)
-            var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-            btnRecord.setBackgroundResource(R.drawable.stop_cv)
-            var btnListenAgain: Button = this.findViewById(R.id.btn_listen_again)
-            btnSend.isVisible = false
-            btnListenAgain.isGone = true
-            btnListenAgain.isVisible = false
-            msg.text = getString(R.string.txt_press_icon_below_speak_2)
-            this.status = 1
-        } catch (e: Exception) {
-            //println(" -->> Something wrong: "+e.toString()+" <<-- ")
-            //EXS01
-            showMessageDialog(
-                getString(R.string.messageDialogErrorTitle),
-                "General error in SpeakActivity\nPlease, contact the developer and attach this screen-error.",
-                errorCode = "S01",
-                details = e.toString()
-            )
-        }
-    }
-
-    @SuppressLint("RestrictedApi", "SetTextI18n")
-    @TargetApi(Build.VERSION_CODES.N)
-    fun StopRecording() {
-        //stop recording
-        try {
-            try {
-                mediaRecorder?.stop()
-                mediaRecorder?.release()
-            } catch (exception_temp: Exception) {
-                //
-            }
-
-            val sampleUri2: String? = this.output // your uri here
-            var metaRetriever: MediaMetadataRetriever = MediaMetadataRetriever()
-            metaRetriever.setDataSource(sampleUri2)
-            var duration: String =
-                metaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            //println(" >>>> " + duration.toLong())
-            if (duration.toLong() > 10000) {
-                RecordingTooLong()
-            } else {
-                var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-                var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-                btnRecord.setBackgroundResource(R.drawable.listen2_cv)
-                msg.text = getString(R.string.txt_sentence_recorded)
-                this.status = 2 //recording successful
-            }
-        } catch (e: Exception) {
-            //println(" -->> Something wrong: "+e.toString()+" <<-- ")
-            //EXS02
-            /*showMessageDialog(
-                getString(R.string.messageDialogErrorTitle),
-                "General error in SpeakActivity\nPlease, contact the developer and attach this screen-error.",
-                errorCode = "S02",
-                details = e.toString()
-            )*/
-            //RecordingFailed()
-        }
-    }
-
-    fun RecordingFailed() {
-        var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        btnRecord.setBackgroundResource(R.drawable.speak2_cv)
-        if (this.status == 6) {
-            msg.text = getString(R.string.txt_recording_too_long)
-            showMessageDialog(
-                "",
-                getString(R.string.txt_recording_too_long)
-            )
-        } else {
-            msg.text = getString(R.string.txt_sentence_record_failed)
-            showMessageDialog(
-                "",
-                getString(R.string.txt_sending_recording_failed)
-            )
-        }
-        this.status = 0 //recording failed
-    }
-
-    fun DeleteRecording() {
-        val path = externalCacheDir?.absolutePath + "/" + this.idSentence + ".mp3"
-        var file = File(path)
-        if (this.idSentence != "" && file.exists()) {
-            file.delete()
-        }
-    }
-
-    fun RecordingTooLong() {
-        this.status = 6 //too long
-        RecordingFailed()
-        DeleteRecording()
-    }
-
-    fun ListenRecording() {
-        //listen recording
-        val outputListening = this.output
-        if (outputListening != null) {
-            val sampleUri: Uri = outputListening.toUri() // your uri here
-            mediaPlayer = MediaPlayer().apply {
-                //setAudioStreamType(AudioManager.)
-                setDataSource(
-                    applicationContext,
-                    sampleUri
-                )
-                prepare()
-                seekTo(0)
-                start()
-
-                setOnCompletionListener {
-                    FinishListening()
-                }
-            }
-        }
-        var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-        var btnListenAgain: Button = this.findViewById(R.id.btn_listen_again)
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        btnRecord.setBackgroundResource(R.drawable.stop_cv)
-        btnListenAgain.isGone = true
-        btnListenAgain.isVisible = false
-        this.status = 5
-        msg.text = getString(R.string.txt_listening_again_recording)
-    }
-
-    fun StopListening() {
-        //stop listening
-        if (this.mediaPlayer?.isPlaying == true) {
-            var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-            var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-            var btnListenAgain: Button = this.findViewById(R.id.btn_listen_again)
-            btnListenAgain.setBackgroundResource(R.drawable.listen2_cv)
-            if (this.listened_first_time) {
-                btnRecord.setBackgroundResource(R.drawable.speak2_cv)
-                btnListenAgain.isVisible = true
-            } else {
-                btnRecord.setBackgroundResource(R.drawable.listen2_cv)
-            }
-            btnRecord.isEnabled = true
-            btnListenAgain.isEnabled = true
-            var btnSendRecording: Button = this.findViewById(R.id.btn_send_speak)
-            if (!btnSendRecording.isVisible) {
-                this.status = 2 //re-listening recording -> because it's stopped
-                msg.text = getString(R.string.txt_listening_stopped)
-            } else {
-                FinishListening()
-            }
-            this.mediaPlayer?.stop()
-        }
-    }
-
-    fun FinishListening() {
-        //finish listening
-        var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-        var btnSend: Button = this.findViewById(R.id.btn_send_speak)
-        var btnListenAgain: Button = this.findViewById(R.id.btn_listen_again)
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        if (this.mediaPlayer?.isPlaying == false) {
-            this.listened_first_time = true
-            btnRecord.setBackgroundResource(R.drawable.speak2_cv)
-            btnListenAgain.setBackgroundResource(R.drawable.listen2_cv)
-        }
-        this.status = 3 //listened the recording
-        btnSend.isVisible = true
-        btnListenAgain.isGone = false
-        btnListenAgain.isVisible = true
-        msg.text = getString(R.string.txt_recorded_correct_or_wrong)
-    }
-
-    fun SendRecording() {
-        //sending recording
-        StopListening()
-        var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-        var btnSend: Button = this.findViewById(R.id.btn_send_speak)
-        var btnSkip: Button = this.findViewById(R.id.btn_skip_speak)
-        var btnListenAgain: Button = this.findViewById(R.id.btn_listen_again)
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        btnRecord.setBackgroundResource(R.drawable.speak_cv)
-        btnRecord.isEnabled = false
-        this.status = 4
-        btnSend.isVisible = false
-        btnSkip.isEnabled = false
-        btnListenAgain.isVisible = false
-        msg.text = getString(R.string.txt_sending_recording)
-
-        var encoded: ByteArray? = null
-        var encoded2: String? = null
-        if (Build.VERSION.SDK_INT < 26) {
-            msg.text =
-                "Error: your android version doesn't permit to send the recording to server. Sorry."
-            //EXS05
-            showMessageDialog(
-                getString(R.string.messageDialogErrorTitle),
-                "Error: your android version doesn't permit to send the recording to server. Sorry.",
-                errorCode = "S05"
-            )
-        } else {
-            println("output: " + output)
-            //encoded = Files.readAllBytes(Paths.get(this.output!!))
-            encoded = Files.readAllBytes(Paths.get(this.output))
-
-            val byteArray = output?.let { it.toByteArray() }
-
-            //println(" -->> byteArray -->>" + byteArray)
-            //println(" -->> encoded -->> " + encoded.toString())
-
-            encoded2 = readFileAsLinesUsingBufferedReader(output!!)
-            //println(" -->> fileReadStream: " + encoded2.toString())
-
-            /*
-            File file = new File(path);
-            int size = (int) file.length();
-            byte[] bytes = new byte[size];
-            try {
-                BufferedInputStream buf = new BufferedInputStream(new FileInputStream(file));
-                buf.read(bytes, 0, bytes.length);
-                buf.close();
-            } catch (FileNotFoundException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-            */
-        }
-
-        try {
-            val path = "clips" //API to get sentences
-            val params: String? = encoded2
-
-            tempUrl = tempUrl.replace("{{*{{lang}}*}}", this.selectedLanguage)
-
-            val que = Volley.newRequestQueue(this)
-            val req = object : StringRequest(Request.Method.POST, tempUrl + path,
-                Response.Listener {
-                    val json_result = it.toString()
-                    println(">> Successful: " + it.toString())
-                    RecordingSent()
-                }, Response.ErrorListener {
-                    println(" -->> Something wrong: " + it.toString() + " <<-- ")
-                    error2()
-                    println(">> Error: " + it.message.toString())
-                    RecordingError()
-                    btnSkip.isEnabled = true
-                }
-            ) {
-                /*override fun getBodyContentType(): String {
-                    return "application/octet-stream"//Use this function to set Content-Type for Volley
-                }*/
-
-                @Throws(AuthFailureError::class)
-                override fun getBody(): ByteArray? {
-                    var returnValue = encoded2
-                    println("--->>--->>: " + returnValue)
-                    return returnValue?.toByteArray(Charset.defaultCharset())
-                }
-
-
-                @Throws(AuthFailureError::class)
-                override fun getHeaders(): Map<String, String> {
-                    val headers = HashMap<String, String>()
-                    var logged = getSharedPreferences(
-                        LOGGED_IN_NAME,
-                        PRIVATE_MODE
-                    ).getBoolean(LOGGED_IN_NAME, false)
-                    if (logged) {
-                        var cookie_id =
-                            getSharedPreferences(USER_CONNECT_ID, PRIVATE_MODE).getString(
-                                USER_CONNECT_ID,
-                                ""
-                            )
-                        headers.put(
-                            "Cookie",
-                            "connect.sid=" + cookie_id
-                        )
-                    } else {
-                        headers.put(
-                            "Authorization",
-                            "Basic MzVmNmFmZTItZjY1OC00YTNhLThhZGMtNzQ0OGM2YTM0MjM3OjNhYzAwMWEyOTQyZTM4YzBiNmQwMWU0M2RjOTk0YjY3NjA0YWRmY2Q="
-                        )
-                    }
-                    /*headers.put("Accept-Encoding", "gzip, deflate, br")
-                    headers.put("channel", "null")
-                    headers.put("DNT", "1")*/
-                    headers.put("Content-Type", "application/octet-stream")
-                    headers.put("sentence", encode(textSentence, "UTF-8").replace("+", "%20"))
-                    headers.put("sentence_id", idSentence)
-                    var formatted = ""
-                    if (Build.VERSION.SDK_INT >= 26) {
-                        val current = LocalDateTime.now()
-                        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")
-                        formatted = current.format(formatter)
-                    } else {
-                        formatted = SimpleDateFormat("yyyyMMddhhmmssSSS").format(Date()).toString()
-                    }
-                    headers.put("client_id", formatted + "CVAndroidUnofficialSav")
-                    println(
-                        " >> text_sentence >> " + encode(textSentence, "UTF-8").replace(
-                            "+",
-                            "%20"
-                        )
                     )
-                    println(" >> id_sentence >> " + idSentence)
-                    return headers
                 }
             }
-            que.add(req)
-        } catch (e: Exception) {
-            error2()
-            println(">> Exception: " + e.toString())
-            btnSkip.isEnabled = true
         }
-    }
+    } else Unit
 
-    fun getFileBytes(context: Context, path: String): ByteArray {
-        return File(path).readBytes()
-    }
-
-    fun RecordingSent() {
-        //when recording is sent
-        println("Recording sent!")
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        msg.text = getString(R.string.txt_recording_sent)
-        Toast.makeText(this, getString(R.string.txt_recording_sent), Toast.LENGTH_SHORT).show()
-        incrementContributing()
-        API_request()
-    }
-
-    fun RecordingError() {
-        //when recording sending is failed
-        println("Sending recording failed!")
-        var msg: TextView = this.findViewById(R.id.textMessageAlertSpeak)
-        msg.text = getString(R.string.txt_sending_recording_failed_and_skip).replace(
-            "{{*{{skip_button}}*}}",
-            getString(R.string.btn_skip_sentence)
-        )
-        var btnRecord: Button = this.findViewById(R.id.btn_start_speak)
-        var btnSend: Button = this.findViewById(R.id.btn_send_speak)
-        var btnSkip: Button = this.findViewById(R.id.btn_skip_speak)
-        var btnListenAgain: Button = this.findViewById(R.id.btn_listen_again)
-        btnRecord.isEnabled = true
-        btnSend.isVisible = true
-        btnListenAgain.isVisible = true
-        btnSkip.isEnabled = true
-        Toast.makeText(this, getString(R.string.txt_sending_recording_failed), Toast.LENGTH_SHORT)
-            .show()
-        //MX-S06
-        showMessageDialog(
-            "",
-            getString(R.string.txt_sending_recording_failed_and_skip).replace(
-                "{{*{{skip_button}}*}}",
-                getString(R.string.btn_skip_sentence)
-            ),
-            errorCode = "S06"
-        )
-    }
-
-    fun readFileAsLinesUsingBufferedReader(fileName: String): String =
-        File(fileName).inputStream().readBytes().toString(Charsets.UTF_8)
-
-    fun checkPermissions() {
-        try {
-            val PERMISSIONS = arrayOf(
-                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+    private fun checkPermission() {
+        var conditions = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) != PackageManager.PERMISSION_GRANTED
+        var permissionsArray = arrayOf(Manifest.permission.RECORD_AUDIO)
+        if (speakPrefManager.saveRecordingsOnDevice) {
+            conditions = ContextCompat.checkSelfPermission(
+                this,
                 Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) != PackageManager.PERMISSION_GRANTED
+            permissionsArray = arrayOf(
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
             )
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                )
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    PERMISSIONS,
-                    RECORD_REQUEST_CODE
-                )
-            }
-        } catch (e: Exception) {
-            //
+        }
+        if (conditions) {
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsArray,
+                RECORD_REQUEST_CODE
+            )
         }
     }
 
@@ -794,85 +589,182 @@ class SpeakActivity : AppCompatActivity() {
         permissions: Array<String>,
         grantResults: IntArray
     ) {
+        var conditions =
+            grantResults.isEmpty() || grantResults[0] != PackageManager.PERMISSION_GRANTED
+        if (speakPrefManager.saveRecordingsOnDevice) conditions =
+            grantResults.isEmpty() || grantResults[0] != PackageManager.PERMISSION_GRANTED || grantResults[1] != PackageManager.PERMISSION_GRANTED
         when (requestCode) {
             RECORD_REQUEST_CODE -> {
-                if (grantResults.isEmpty() || grantResults[0] != PackageManager.PERMISSION_GRANTED || grantResults[1] != PackageManager.PERMISSION_GRANTED) {
-                    //checkPermissions()
-                    closeSpeak()
+                if (conditions) {
+                    onBackPressed()
                 }
             }
         }
     }
 
-    fun checkConnection(): Boolean {
-        if (SpeakActivity.checkInternet(this)) {
-            return true
+    private fun animateProgressBar(
+        progressBar: View,
+        sum: Int = 0,
+        dailyGoal: Int = 0,
+        currentContributions: Int = 0,
+        color: Int = R.color.colorBlack
+    ) {
+        val view: View = progressBar
+        val metrics = DisplayMetrics()
+        windowManager.defaultDisplay.getMetrics(metrics)
+        val width = metrics.widthPixels
+        //val height = metrics.heightPixels
+        var newValue = 0
+
+        if (dailyGoal == 0 || sum == 0) {
+            newValue = width / 2
+            setProgressBarColour(progressBar, forced = true)
+        } else if (sum >= dailyGoal) {
+            val tempContributions =
+                (currentContributions.toFloat() * dailyGoal.toFloat()) / sum.toFloat()
+            newValue =
+                ((tempContributions.toFloat() / dailyGoal.toFloat()) * width).toInt()
+            setProgressBarColour(progressBar, forced = false, color = color)
+            progressBar.isGone = false
+        } else if (currentContributions == 0) {
+            progressBar.isGone = true
+            progressBar.layoutParams.width = 1
+            progressBar.requestLayout()
         } else {
-            openNoConnection()
-            return false
+            //currentRecordingsValidations : dailyGoal = X : 1 ==> currentRecordingsValidations / dailyGoal
+            newValue =
+                ((currentContributions.toFloat() / dailyGoal.toFloat()) * width).toInt()
+            setProgressBarColour(progressBar, forced = false, color = color)
+            progressBar.isGone = false
         }
-    }
 
-    companion object {
-        fun checkInternet(context: Context): Boolean {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val networkInfo = cm.activeNetworkInfo
-            if (networkInfo != null && networkInfo.isConnected) {
-                //Connection OK
-                return true
+        if (!view.isGone) {
+            if (mainPrefManager.areAnimationsEnabled) {
+                animationProgressBar(progressBar, view.width, newValue)
             } else {
-                //No connection
-                return false
+                view.layoutParams.width = newValue
+                view.requestLayout()
             }
-
         }
     }
 
-    fun openNoConnection() {
-        val intent = Intent(this, NoConnectionActivity::class.java).also {
-            startActivity(it)
-            closeSpeak()
+    private fun setProgressBarColour(
+        progressBar: View,
+        forced: Boolean = false,
+        color: Int = R.color.colorBlack
+    ) {
+        if (!settingsPrefManager.isProgressBarColouredEnabled || forced) {
+            theme.setElement(
+                this,
+                progressBar,
+                R.color.colorPrimaryDark,
+                R.color.colorLightGray
+            )
+        } else {
+            //coloured
+            theme.setElement(
+                this,
+                progressBar,
+                color,
+                color
+            )
         }
     }
 
-    override fun attachBaseContext(newBase: Context) {
-        var tempLang = newBase.getSharedPreferences("LANGUAGE", 0).getString("LANGUAGE", "en")
-        var lang = tempLang.split("-")[0]
-        val langSupportedYesOrNot = TranslationsLanguages()
-        if (!langSupportedYesOrNot.isSupported(lang)) {
-            lang = langSupportedYesOrNot.getDefaultLanguage()
+    private fun animationProgressBar(progressBar: View, min: Int, max: Int) {
+        val view: View = progressBar
+        val animation: ValueAnimator =
+            ValueAnimator.ofInt(min, max)
+        animation.duration = 1000
+        animation.addUpdateListener { anim ->
+            val value = anim.animatedValue as Int
+            view.layoutParams.width = value
+            view.requestLayout()
         }
-        super.attachBaseContext(newBase.wrap(Locale(lang)))
+        animation.start()
     }
 
-    fun Context.wrap(desiredLocale: Locale): Context {
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M)
-            return getUpdatedContextApi23(desiredLocale)
-
-        return if (Build.VERSION.SDK_INT == Build.VERSION_CODES.N)
-            getUpdatedContextApi24(desiredLocale)
-        else
-            getUpdatedContextApi25(desiredLocale)
+    private fun animateAudioBar() {
+        if (mainPrefManager.areAnimationsEnabled) {
+            this.animationsCount++
+            binding.speakSectionAudioBar.children.forEach {
+                animateAudioBar(it, animationsCount)
+            }
+        }
     }
 
-    @TargetApi(Build.VERSION_CODES.M)
-    private fun Context.getUpdatedContextApi23(locale: Locale): Context {
-        val configuration = resources.configuration
-        configuration.locale = locale
-        return createConfigurationContext(configuration)
+    private fun hideAudioBar() {
+        if (mainPrefManager.areAnimationsEnabled) {
+            if (binding.imageAudioBarCenter.isVisible && isAudioBarVisible) {
+                isAudioBarVisible = false
+                binding.speakSectionAudioBar.children.forEach {
+                    animateAudioBar(it, animationsCount)
+                }
+            }
+        }
     }
 
-    private fun Context.getUpdatedContextApi24(locale: Locale): Context {
-        val configuration = resources.configuration
-        configuration.setLocale(locale)
-        return createConfigurationContext(configuration)
+    private fun animateAudioBar(view: View, animationsCountTemp: Int) {
+        if (speakViewModel.state.value == SpeakViewModel.Companion.State.RECORDING && this.isAudioBarVisible) {
+            animationAudioBar(view, view.height, (30..350).random(), animationsCountTemp)
+            view.isVisible = true
+        } else if (this.isAudioBarVisible && view.height >= 30) {
+            animationAudioBar(view, view.height, 2, animationsCountTemp, forced = true)
+            view.isVisible = true
+        } else {
+            view.isVisible = false
+        }
     }
 
-    @TargetApi(Build.VERSION_CODES.N_MR1)
-    private fun Context.getUpdatedContextApi25(locale: Locale): Context {
-        val localeList = LocaleList(locale)
-        val configuration = resources.configuration
-        configuration.locales = localeList
-        return createConfigurationContext(configuration)
+    private fun animationAudioBar(
+        view: View,
+        min: Int,
+        max: Int,
+        animationsCountTemp: Int,
+        forced: Boolean = false
+    ) {
+        val animation: ValueAnimator =
+            ValueAnimator.ofInt(min, max)
+        animation.duration = 300
+        animation.addUpdateListener { anim ->
+            val value = anim.animatedValue as Int
+            view.layoutParams.height = value
+            view.requestLayout()
+        }
+        animation.doOnEnd {
+            if (this.animationsCount == animationsCountTemp && forced && max == 2) {
+                view.isVisible = false
+            }
+            if (this.isAudioBarVisible && view.isVisible && !forced && this.animationsCount == animationsCountTemp) {
+                animateAudioBar(view, animationsCountTemp)
+            }
+        }
+        animation.start()
     }
+
+    private fun showImage(image: ImageView) {
+        if (!image.isVisible) {
+            image.isVisible = true
+            image.isEnabled = true
+            startAnimation(
+                image,
+                R.anim.zoom_in_speak_listen
+            )
+        }
+    }
+
+    private fun hideImage(image: ImageView, stop: Boolean = true) {
+        if (stop) stopImage(image)
+        image.isEnabled = false
+        startAnimation(
+            image,
+            R.anim.zoom_out_speak_listen
+        )
+        image.isVisible = false
+    }
+
+    private fun stopImage(image: ImageView) {
+        stopAnimation(image)
+    }
+
 }
